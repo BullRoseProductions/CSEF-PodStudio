@@ -1,6 +1,6 @@
 {
   "name": "csef-studio",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "type": "module",
   "description": "Content platform for the CSEF Conference podcast programming",
   "scripts": {
@@ -8,6 +8,7 @@
     "dev": "vite"
   },
   "dependencies": {
+    "jspdf": "^2.5.2",
     "lucide-react": "^0.383.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

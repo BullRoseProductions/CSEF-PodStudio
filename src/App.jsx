@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { jsPDF } from 'jspdf';
 import {
   Loader2, Sparkles, Copy, Check, AlertCircle, ArrowLeft,
   ClipboardCheck, Search, FileText, LayoutGrid, CalendarClock, SlidersHorizontal,
-  ChevronRight, RefreshCw, Lightbulb, Building2
+  ChevronRight, RefreshCw, Lightbulb, Building2,
+  Download, FileDown, Clock, Trash2, History
 } from 'lucide-react';
 
 const STORAGE_KEY = 'csef-studio-state-v1';
+const HISTORY_LIMIT = 10;
 
 // ─────────── PALETTE (CSEF Luxury Architectural) ───────────
 const C = {
@@ -318,6 +321,230 @@ function MarkdownOutput({ text }) {
   );
 }
 
+// ─────────── DOWNLOADS ───────────
+
+function sanitizeFilename(str) {
+  return (str || 'output')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'output';
+}
+
+function buildFilename(modeTitle, inputs, ext) {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  // Try to find a meaningful input to use in the filename
+  const identifier = inputs?.guestName || inputs?.episodeTitle || inputs?.topic || '';
+  const parts = [
+    'csef',
+    sanitizeFilename(modeTitle),
+    identifier ? sanitizeFilename(identifier) : null,
+    dateStr,
+  ].filter(Boolean);
+  return `${parts.join('-')}.${ext}`;
+}
+
+function downloadTextFile(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+
+function downloadPDF(text, filename, modeTitle, modeTagline) {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 54;
+  const marginTop = 54;
+  const marginBottom = 54;
+  const contentWidth = pageWidth - (marginX * 2);
+  let y = marginTop;
+
+  // ── Header: CSEF eyebrow ──
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(184, 147, 92); // brass
+  doc.text('CSEF CONTENT STUDIO', marginX, y);
+  y += 22;
+
+  // ── Title ──
+  doc.setFont('times', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(10, 25, 41);
+  const titleLines = doc.splitTextToSize(modeTitle, contentWidth);
+  doc.text(titleLines, marginX, y);
+  y += titleLines.length * 24 + 4;
+
+  // ── Tagline ──
+  if (modeTagline) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(90, 100, 120);
+    doc.text(modeTagline, marginX, y);
+    y += 14;
+  }
+
+  // ── Date ──
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(152, 160, 175);
+  const dateLine = 'Generated ' + new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+  doc.text(dateLine, marginX, y);
+  y += 20;
+
+  // ── Divider ──
+  doc.setDrawColor(0, 105, 180);
+  doc.setLineWidth(1.5);
+  doc.line(marginX, y, marginX + 60, y);
+  y += 22;
+
+  // ── Body: parse blocks and render ──
+  const blocks = parseMarkdown(text);
+  const addPageIfNeeded = (needed = 20) => {
+    if (y + needed > pageHeight - marginBottom) {
+      doc.addPage();
+      y = marginTop;
+    }
+  };
+
+  const stripBold = (s) => (s || '').replace(/\*\*(.+?)\*\*/g, '$1');
+
+  for (const block of blocks) {
+    if (block.type === 'section') {
+      addPageIfNeeded(50);
+      y += 8;
+      doc.setDrawColor(0, 43, 78);
+      doc.setLineWidth(0.75);
+      doc.line(marginX, y, marginX + contentWidth, y);
+      y += 14;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(184, 147, 92);
+      doc.text('SECTION', marginX, y);
+      y += 12;
+      doc.setFont('times', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(0, 43, 78);
+      const secLines = doc.splitTextToSize(block.text, contentWidth);
+      doc.text(secLines, marginX, y);
+      y += secLines.length * 16 + 8;
+    } else if (block.type === 'heading') {
+      addPageIfNeeded(30);
+      y += 6;
+      const size = block.level === 1 ? 15 : block.level === 2 ? 13 : 12;
+      doc.setFont('times', 'bold');
+      doc.setFontSize(size);
+      doc.setTextColor(10, 25, 41);
+      const hLines = doc.splitTextToSize(stripBold(block.text), contentWidth);
+      doc.text(hLines, marginX, y);
+      y += hLines.length * (size + 2) + 6;
+    } else if (block.type === 'paragraph') {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(31, 44, 62);
+      const pLines = doc.splitTextToSize(stripBold(block.text), contentWidth);
+      for (const line of pLines) {
+        addPageIfNeeded(16);
+        doc.text(line, marginX, y);
+        y += 14;
+      }
+      y += 6;
+    } else if (block.type === 'ul' || block.type === 'ol') {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(31, 44, 62);
+      const indent = 18;
+      block.items.forEach((item, idx) => {
+        const marker = block.type === 'ol' ? `${idx + 1}.` : '•';
+        const itemLines = doc.splitTextToSize(stripBold(item), contentWidth - indent);
+        for (let i = 0; i < itemLines.length; i++) {
+          addPageIfNeeded(16);
+          if (i === 0) {
+            doc.setFont('helvetica', 'bold');
+            doc.text(marker, marginX, y);
+            doc.setFont('helvetica', 'normal');
+          }
+          doc.text(itemLines[i], marginX + indent, y);
+          y += 14;
+        }
+        y += 2;
+      });
+      y += 4;
+    } else if (block.type === 'quote') {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(10.5);
+      doc.setTextColor(31, 44, 62);
+      block.lines.forEach(line => {
+        const qLines = doc.splitTextToSize(stripBold(line), contentWidth - 12);
+        for (const l of qLines) {
+          addPageIfNeeded(16);
+          doc.setDrawColor(0, 105, 180);
+          doc.setLineWidth(2);
+          doc.line(marginX, y - 10, marginX, y + 2);
+          doc.text(l, marginX + 12, y);
+          y += 14;
+        }
+      });
+      y += 6;
+    } else if (block.type === 'break') {
+      y += 8;
+    }
+  }
+
+  // ── Footer on every page ──
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(152, 160, 175);
+    doc.text('CSEF Content Studio', marginX, pageHeight - 30);
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, pageHeight - 30, { align: 'right' });
+  }
+
+  doc.save(filename);
+}
+
+// ─────────── HISTORY ───────────
+
+// A history entry: { id, modeId, modeTitle, snippet, timestamp, inputs, output }
+function addHistoryEntry(history, modeId, modeTitle, inputs, output) {
+  const snippet = (output || '').replace(/[#*═►]/g, '').trim().slice(0, 120);
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    modeId,
+    modeTitle,
+    inputs: { ...inputs },
+    output,
+    snippet,
+    timestamp: Date.now(),
+  };
+  const next = [entry, ...history].slice(0, HISTORY_LIMIT);
+  return next;
+}
+
+function formatRelativeTime(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+
+
 // ─────────── PERSISTENCE ───────────
 
 const loadState = () => {
@@ -357,14 +584,15 @@ const MODES = {
     icon: Search,
     title: 'Host Prep Brief',
     tagline: 'Research the guest, plan the arc',
-    description: 'For the CSEF podcast host. AI researches the guest online and delivers a snapshot, recent work, 10 ranked interview questions, questions to avoid, and clip-worthy moments to steer toward.',
+    description: 'For the CSEF podcast host. Paste what you know about the guest (bio, press kit, LinkedIn) and Claude will supplement with online research to deliver a snapshot, recent work, 10 ranked interview questions, questions to avoid, and clip-worthy moments to steer toward.',
     buttonLabel: 'Research and prep',
     hasWebSearch: true,
     inputs: [
       { key: 'guestName', label: 'Guest name', placeholder: 'e.g., Meg Kane', required: true },
       { key: 'guestRole', label: 'Role / title', placeholder: 'e.g., Host City Executive' },
       { key: 'guestCompany', label: 'Company / organization', placeholder: 'e.g., Philadelphia Soccer 2026' },
-      { key: 'knownTopics', label: 'Anything you already know we should focus on (optional)', placeholder: 'Recent news, specific projects, angles you want to cover...', multiline: true, rows: 3 },
+      { key: 'guestFacts', label: 'What you already know about the guest (bio, press kit, LinkedIn summary)', placeholder: 'Paste their bio, press kit language, LinkedIn "About" section, or anything else you already know is accurate. Claude will treat this as the source of truth and only supplement with online research.', multiline: true, rows: 6 },
+      { key: 'knownTopics', label: 'Anything specific you want the interview to focus on (optional)', placeholder: 'Recent news, specific projects, angles you want to cover...', multiline: true, rows: 3 },
     ],
   },
   contentFromInterview: {
@@ -449,8 +677,10 @@ export default function App() {
       goals: stored.goals || '',
       // Per-mode inputs
       inputs: stored.inputs || {},
-      // Per-mode outputs
+      // Per-mode outputs (current/latest per mode)
       outputs: stored.outputs || {},
+      // Rolling history across all modes (max 10)
+      history: stored.history || [],
     };
   });
 
@@ -470,6 +700,27 @@ export default function App() {
 
   const updateContext = useCallback((key, value) => {
     setState(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const restoreFromHistory = useCallback((entry) => {
+    setState(prev => ({
+      ...prev,
+      inputs: {
+        ...prev.inputs,
+        [entry.modeId]: { ...(entry.inputs || {}) },
+      },
+      outputs: {
+        ...prev.outputs,
+        [entry.modeId]: entry.output,
+      },
+    }));
+    setCurrentModeId(entry.modeId);
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    if (confirm('Clear all recent outputs? Your current mode outputs will still be saved.')) {
+      setState(prev => ({ ...prev, history: [] }));
+    }
   }, []);
 
   const callBackend = async (mode, payload) => {
@@ -516,6 +767,7 @@ export default function App() {
       setState(prev => ({
         ...prev,
         outputs: { ...prev.outputs, [currentMode.id]: result },
+        history: addHistoryEntry(prev.history || [], currentMode.id, currentMode.title, modeInputs, result),
       }));
     } catch (e) {
       setError(e.message);
@@ -557,7 +809,13 @@ export default function App() {
       <Header onHome={goHome} />
 
       {screen === 'home' && (
-        <HomeView onEnterMode={enterMode} state={state} updateContext={updateContext} />
+        <HomeView
+          onEnterMode={enterMode}
+          state={state}
+          updateContext={updateContext}
+          onRestoreHistory={restoreFromHistory}
+          onClearHistory={clearHistory}
+        />
       )}
 
       {screen === 'mode' && currentMode && (
@@ -665,7 +923,7 @@ function Header({ onHome }) {
 
 // ─────────── HOME ───────────
 
-function HomeView({ onEnterMode, state, updateContext }) {
+function HomeView({ onEnterMode, state, updateContext, onRestoreHistory, onClearHistory }) {
   const [showContext, setShowContext] = useState(false);
   const preEventModes = MODE_ORDER.filter(id => MODES[id].category === 'pre-event');
   const postEventModes = MODE_ORDER.filter(id => MODES[id].category === 'post-event');
@@ -799,6 +1057,129 @@ function HomeView({ onEnterMode, state, updateContext }) {
           ))}
         </div>
       </div>
+
+      {/* Recent Outputs — shows only when history has entries */}
+      {state.history && state.history.length > 0 && (
+        <div style={{
+          background: C.glass,
+          backdropFilter: 'blur(16px) saturate(1.1)',
+          WebkitBackdropFilter: 'blur(16px) saturate(1.1)',
+          border: `1px solid ${C.rule}`,
+          padding: '24px 26px',
+          marginBottom: 32,
+          boxShadow: C.shadowLg,
+          position: 'relative',
+        }}>
+          {/* Corner brackets */}
+          <div style={{ position: 'absolute', top: 6, left: 6, width: 10, height: 10, borderTop: `1px solid ${C.brass}`, borderLeft: `1px solid ${C.brass}`, opacity: 0.6 }} />
+          <div style={{ position: 'absolute', top: 6, right: 6, width: 10, height: 10, borderTop: `1px solid ${C.brass}`, borderRight: `1px solid ${C.brass}`, opacity: 0.6 }} />
+          <div style={{ position: 'absolute', bottom: 6, left: 6, width: 10, height: 10, borderBottom: `1px solid ${C.brass}`, borderLeft: `1px solid ${C.brass}`, opacity: 0.6 }} />
+          <div style={{ position: 'absolute', bottom: 6, right: 6, width: 10, height: 10, borderBottom: `1px solid ${C.brass}`, borderRight: `1px solid ${C.brass}`, opacity: 0.6 }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 32, height: 32, background: C.brassPale,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <History size={15} style={{ color: C.brass }} strokeWidth={1.5} />
+              </div>
+              <div>
+                <div className="mono" style={{
+                  fontSize: 10, letterSpacing: '0.28em', textTransform: 'uppercase',
+                  color: C.brass, fontWeight: 700, marginBottom: 2,
+                }}>
+                  Recent Outputs
+                </div>
+                <div style={{ fontSize: 13, color: C.inkMuted }}>
+                  Your last {state.history.length} {state.history.length === 1 ? 'generation' : 'generations'} — click to restore
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onClearHistory}
+              style={{
+                padding: '6px 12px',
+                background: 'transparent',
+                border: `1px solid ${C.rule}`,
+                color: C.inkMuted,
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: 10, fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = C.blueDeep; e.currentTarget.style.color = C.blueDeep; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.rule; e.currentTarget.style.color = C.inkMuted; }}
+            >
+              <Trash2 size={11} strokeWidth={1.8} /> Clear
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {state.history.map(entry => {
+              const mode = MODES[entry.modeId];
+              const Icon = mode?.icon || FileText;
+              return (
+                <button
+                  key={entry.id}
+                  onClick={() => onRestoreHistory(entry)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '12px 14px',
+                    background: C.white,
+                    border: `1px solid ${C.rule}`,
+                    textAlign: 'left',
+                    boxShadow: C.shadowSm,
+                    cursor: 'pointer',
+                    transition: 'all 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = C.blueDeep;
+                    e.currentTarget.style.transform = 'translateX(2px)';
+                    e.currentTarget.style.boxShadow = C.shadowMd;
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = C.rule;
+                    e.currentTarget.style.transform = 'translateX(0)';
+                    e.currentTarget.style.boxShadow = C.shadowSm;
+                  }}
+                >
+                  <div style={{
+                    width: 32, height: 32,
+                    background: C.gradIcon,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+                  }}>
+                    <Icon size={15} style={{ color: C.white }} strokeWidth={1.5} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+                      <div className="display" style={{
+                        fontSize: 14, fontWeight: 500, color: C.ink,
+                        letterSpacing: '-0.01em',
+                      }}>
+                        {entry.modeTitle}
+                      </div>
+                      <div className="mono" style={{
+                        fontSize: 10, color: C.inkFaded, letterSpacing: '0.1em',
+                      }}>
+                        {formatRelativeTime(entry.timestamp)}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: 12, color: C.inkMuted, lineHeight: 1.45,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {entry.snippet || 'No preview'}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} style={{ color: C.inkMuted, flexShrink: 0 }} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* First-time tip */}
       <div style={{
@@ -1241,21 +1622,79 @@ function ModeView({ mode, inputs, output, loading, error, copied, onUpdateInput,
                 Your Result
               </div>
             </div>
-            <button
-              onClick={onCopy}
-              style={{
-                padding: '11px 18px',
-                border: `1px solid ${copied ? C.success : C.ruleStrong}`,
-                background: copied ? C.success : C.white,
-                color: copied ? C.white : C.inkSoft,
-                fontFamily: '"JetBrains Mono", monospace', fontSize: 10, fontWeight: 700,
-                letterSpacing: '0.2em', textTransform: 'uppercase',
-                display: 'flex', alignItems: 'center', gap: 8,
-                boxShadow: C.shadowSm,
-              }}
-            >
-              {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={1.8} /> Copy All</>}
-            </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => downloadTextFile(
+                  markdownToPlainText(output),
+                  buildFilename(mode.title, inputs, 'txt')
+                )}
+                style={{
+                  padding: '11px 14px',
+                  border: `1px solid ${C.ruleStrong}`,
+                  background: C.white,
+                  color: C.inkSoft,
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: C.shadowSm, cursor: 'pointer',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = C.blueDeep;
+                  e.currentTarget.style.color = C.blueDeep;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = C.ruleStrong;
+                  e.currentTarget.style.color = C.inkSoft;
+                }}
+                title="Download as plain text (.txt)"
+              >
+                <Download size={12} strokeWidth={1.8} /> TXT
+              </button>
+              <button
+                onClick={() => downloadPDF(
+                  output,
+                  buildFilename(mode.title, inputs, 'pdf'),
+                  mode.title,
+                  mode.tagline
+                )}
+                style={{
+                  padding: '11px 14px',
+                  border: `1px solid ${C.ruleStrong}`,
+                  background: C.white,
+                  color: C.inkSoft,
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: C.shadowSm, cursor: 'pointer',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = C.blueDeep;
+                  e.currentTarget.style.color = C.blueDeep;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = C.ruleStrong;
+                  e.currentTarget.style.color = C.inkSoft;
+                }}
+                title="Download as formatted PDF"
+              >
+                <FileDown size={12} strokeWidth={1.8} /> PDF
+              </button>
+              <button
+                onClick={onCopy}
+                style={{
+                  padding: '11px 18px',
+                  border: `1px solid ${copied ? C.success : C.ruleStrong}`,
+                  background: copied ? C.success : C.white,
+                  color: copied ? C.white : C.inkSoft,
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: C.shadowSm, cursor: 'pointer',
+                }}
+              >
+                {copied ? <><Check size={12} strokeWidth={2.5} /> Copied</> : <><Copy size={12} strokeWidth={1.8} /> Copy All</>}
+              </button>
+            </div>
           </div>
           <div style={{ padding: '32px 36px' }}>
             <MarkdownOutput text={output} />

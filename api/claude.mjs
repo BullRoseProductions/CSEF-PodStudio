@@ -79,7 +79,31 @@ Direct, specific, no fluff. Prioritize concrete detail over generic advice.`,
 
 ${CSEF_CONTEXT}
 
-Use web search to research the guest and their organization. Look for recent projects, quotes, publications, and news mentions.
+═══════════════════════════════════════════════════════════════
+CRITICAL ACCURACY RULES — READ FIRST, FOLLOW EXACTLY
+═══════════════════════════════════════════════════════════════
+
+Your ENTIRE credibility depends on not inventing facts. A prep brief with fabricated details is worse than useless — it will embarrass the host on-air. Follow these rules without exception:
+
+1. GUEST-PROVIDED FACTS ARE THE SOURCE OF TRUTH.
+   If the producer has provided facts about the guest under "What producer already knows," treat those as authoritative. Do NOT contradict them with web search results. Do NOT ignore them. Build the entire brief around them first, then supplement.
+
+2. NEVER INVENT CONNECTIONS BETWEEN FACTS.
+   If you find that a person runs Company X AND has a product called Y, do NOT assume Y is related to X unless you have direct evidence. This is the #1 hallucination trap. Two true facts can be TRUE INDEPENDENTLY. Do not construct narratives that bridge them.
+
+3. NEVER FABRICATE STATISTICS, QUOTES, OR PRAISE.
+   Do not write things like "called the gold standard by X" or "grew to six-figure revenue" or "manages a crew of 70" unless you can point to a specific search result that says exactly that. If you can only find a vague mention, say "reportedly" or leave it out entirely. Made-up specifics are the fastest way to destroy trust.
+
+4. WHEN IN DOUBT, ASK RATHER THAN GUESS.
+   If a factual claim is important but unverified, include it in a "TO CONFIRM WITH GUEST" section instead of stating it as fact.
+
+5. CITE SOURCES INLINE FOR CLAIMS FROM WEB SEARCH.
+   For every substantive claim you add from online research, append the source domain in parentheses like "(source: linkedin.com)" or "(source: company website)". This lets the host know what to trust vs. verify.
+
+6. IF THE GUEST-PROVIDED FACTS AND WEB SEARCH RESULTS CONFLICT, TRUST THE PRODUCER'S NOTES.
+   The producer knows their guest. Web results can be outdated, wrong company, or wrong person entirely.
+
+═══════════════════════════════════════════════════════════════
 
 FORMATTING RULES:
 - Section headers in ALL CAPS on their own line
@@ -90,24 +114,27 @@ FORMATTING RULES:
 STRUCTURE:
 
 GUEST SNAPSHOT
-Three or four sentences on who this person is, their role, and why CSEF's audience should care.
+Three or four sentences on who this person is, their role, and why CSEF's audience should care. Build this from the producer-provided facts first. Add supplementary web research only when the facts are directly relevant and verifiable.
 
 RECENT RELEVANT WORK
-Two or three specific projects or initiatives this guest has led recently. Include what and where and, when possible, dollar figures or scale.
+Two or three specific projects or initiatives this guest has led recently. Include what and where and, when possible, dollar figures or scale — but ONLY if you can cite a source. If you cannot verify with a source, either use vaguer language ("reportedly involved in...") or omit entirely. Cite the source domain inline for each item.
+
+TO CONFIRM WITH GUEST (only include if applicable)
+If you found interesting-but-unverified information online, list it here as a bulleted list of things the host should confirm with the guest before referring to on-air. Skip this section if every fact is either producer-provided or well-sourced.
 
 CONVERSATION ARC RECOMMENDATION
-A three-part conversation arc: opening frame, middle exploration, closing takeaway. Two sentences on each section.
+A three-part conversation arc: opening frame, middle exploration, closing takeaway. Two sentences on each section. This can be based on general knowledge of what makes a good interview arc — no factual sourcing required here.
 
 TEN QUESTIONS RANKED BY POTENTIAL
-Ten interview questions ranked from strongest (1) to weakest (10). For each question: the question itself, then one sentence on why it will produce a good answer with this specific guest.
+Ten interview questions ranked from strongest (1) to weakest (10). For each question: the question itself, then one sentence on why it will produce a good answer with this specific guest. Ground questions in facts you've verified — if a question references a specific project or claim, that project or claim must be one you can source or that the producer provided.
 
 TWO QUESTIONS TO AVOID
 Two questions that would fall flat or feel like a waste of this guest's expertise, and why.
 
 CLIP-WORTHY MOMENTS TO CREATE
-Three specific moments to steer the conversation toward that will produce shareable LinkedIn clips.
+Three specific moments to steer the conversation toward that will produce shareable LinkedIn clips. Frame these as opportunities to explore, NOT as summaries of stories the guest has already told (unless you have verified those stories exist).
 
-Direct, specific, sourced where possible.`,
+Direct, specific, sourced where possible. Accuracy over polish.`,
 
   // ─────────── POST-EVENT CONTENT ───────────
 
@@ -268,12 +295,29 @@ Areas of expertise / what they want to talk about: ${p.guestExpertise || '[not p
 ${p.additionalContext ? `Additional context: ${p.additionalContext}` : ''}${audience}${voice}${goals}`;
 
     case 'showPrep':
-      return `Prepare the host for this upcoming CSEF podcast interview. Use web search to research the guest and their organization.
+      return `Prepare the host for this upcoming CSEF podcast interview.
 
-Guest name: ${p.guestName}
+═══════════════════════════════════════════════════════════════
+GUEST IDENTITY (baseline info)
+═══════════════════════════════════════════════════════════════
+Name: ${p.guestName}
 Role/Title: ${p.guestRole || '[not provided]'}
 Company/Organization: ${p.guestCompany || '[not provided]'}
-${p.knownTopics ? `Known topics/context: ${p.knownTopics}` : ''}${audience}${voice}${goals}`;
+
+${p.guestFacts ? `═══════════════════════════════════════════════════════════════
+WHAT PRODUCER ALREADY KNOWS (AUTHORITATIVE — TRUST THIS FIRST)
+═══════════════════════════════════════════════════════════════
+The producer has provided the following facts about the guest. TREAT THESE AS THE SOURCE OF TRUTH. Build the guest snapshot and recent work sections primarily from this information. Do not contradict any of these facts with web search results — if there is a conflict, trust these notes. If web search reveals additional information that seems to conflict, flag it in "TO CONFIRM WITH GUEST" rather than treating it as fact.
+
+${p.guestFacts}
+
+═══════════════════════════════════════════════════════════════
+` : ''}
+
+INSTRUCTIONS FOR WEB SEARCH:
+Use web search to find RECENT news, projects, and public statements about ${p.guestName}${p.guestCompany ? ` and ${p.guestCompany}` : ''}. Cite the source domain for every claim you add from web research. If the producer has provided guest facts above, use web search only to SUPPLEMENT those facts with recent developments or additional context — not to override them. Do not invent narratives that connect unrelated facts.
+
+${p.knownTopics ? `INTERVIEW FOCUS AREAS (from producer):\n${p.knownTopics}\n` : ''}${audience}${voice}${goals}`;
 
     case 'contentFromInterview':
       return `Generate a complete content package from this CSEF podcast interview.
